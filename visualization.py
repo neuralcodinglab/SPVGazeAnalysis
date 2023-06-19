@@ -35,6 +35,8 @@ TITLE_REDEFINED = {} # TODO
 
 PANEL_INDEX_SIZE = 20
 
+FIGSIZE = (4,4)
+
 def set_figurestyle(figurestyle=FIGURESTYLE, colors=COLORS):
 #     sns.axes_style("darkgrid")
     plt.style.use(figurestyle)
@@ -42,8 +44,8 @@ def set_figurestyle(figurestyle=FIGURESTYLE, colors=COLORS):
     sns.set_palette(sns.color_palette(colors.values())) #, n_colors=len(colors), desat=0.1))
 
 
-def create_subplots(n_figs=3):
-    return plt.subplots(1,n_figs,figsize=(6*n_figs,4), dpi=100)
+def create_subplots(n_figs=3, figsize=FIGSIZE):
+    return plt.subplots(1,n_figs,figsize=(figsize[0]*n_figs,figsize[1]), dpi=100)
 
 def violin_plots(data, endpoints, x='GazeCondition',
                  axs=None, fig=None,
@@ -68,6 +70,12 @@ def bar_plots(data, endpoints, x='GazeCondition',
         fig, axs = create_subplots(len(endpoints))
     
     # Plot bars
+    if len(endpoints) == 1:
+        y = endpoints[0]
+        sns.barplot(data=data, x=x, y=y, ax= axs, order=order, **kwargs)
+        axs.set(title=y)
+        return fig, axs
+        
     for i, y in enumerate(endpoints):
         sns.barplot(data=data, x=x, y=y, ax= axs[i], order=order, **kwargs)
         axs[i].set(title=y)
@@ -94,6 +102,8 @@ def swarm_plots(data, endpoints, group = 'Subject',
         fig, axs = plt.subplots(1,n_figs,figsize=(6*n_figs,4), dpi=100)
     
     # Plot for each endpoint in a separate axis
+    if len(endpoints) == 1:
+        axs = [axs,]
     for i, y in enumerate(endpoints):
         axs[i].set(title=y)
         
@@ -169,13 +179,18 @@ def joint_distribution_plots(data, pairs, order=ORDERED_CONDITIONS, regression=F
 
 
 def redefine_x_ticks(axs, mapping=COND_REDEFINED, remove_xlabel=False):
-    for ax in axs.flatten():
-        old_ticks = ax.get_xticklabels()
-        new_ticks = [mapping[t.get_text()] for t in old_ticks]
-        ax.set_xticklabels(new_ticks)
-        if remove_xlabel:
-            ax.set(xlabel='')
-#         ax.tick_params(labelrotation=45)
+    
+    # recursive loop through all axes
+    if type(axs) == np.ndarray:
+        for ax in axs:
+            redefine_x_ticks(ax, mapping, remove_xlabel)
+        return
+    
+    old_ticks = axs.get_xticklabels()
+    new_ticks = [mapping[t.get_text()] for t in old_ticks]
+    axs.set_xticklabels(new_ticks)
+    if remove_xlabel:
+        axs.set(xlabel='')
 
 
 def add_significance_line(ax, x1, x2, y=None, text='', rel_h=0.02, rel_y=0.9, size=20):

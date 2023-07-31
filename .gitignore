@@ -1,0 +1,7 @@
+_[Aa]rchive
+_[Aa]rchived
+_out
+out
+.ipynb_checkpoints
+*/.ipynb_checkpoints/*
+**/__pycache__/**

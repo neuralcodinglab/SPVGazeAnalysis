@@ -6,12 +6,14 @@ just basic unit conversion, and adding convenient labels to the dataframe column
 # Data management
 import pandas as pd 
 import os 
+import glob
 
 # Data processing and unit conversions
 import numpy as np
 import ast
 import scipy
 from scipy.spatial.transform import Rotation
+
 
 
 ## Defaults
@@ -69,7 +71,7 @@ def preprocess_data(exp_data, trial_configs=None):
         if data_key != 'TrialConfigRecord':
             add_conditions_from_trial_data(dataframe,
                                          trial_configs,
-                                         ['ExperimentalTask', 'Block', 'GazeCondition', 'Subject'])
+                                         ['ExperimentalTask', 'Block', 'GazeCondition', 'Subject', 'TrialDuration'])
 
         # Convert Quaternions to normalized direction vector (in separate column)
         rot_cols = [col for col in dataframe.columns if 'Rot' in col]
@@ -105,7 +107,7 @@ def load_preprocessed_data(path):
             exp_data[data_key] = pd.read_csv(os.path.join(path,fn),sep='\t')
     return exp_data, calibr_data
 
-def get_filenames(subjects, data_dir, data_keys=None):
+def get_filenames(subjects, data_dir, data_keys=None, keep_duplicates=False):
     """Returns dict with filenames for all specified subjects found in the data 
     directory. The filenames are indexed by record type. """
     # Initialize dict with filenames (categorized by record type)
@@ -115,14 +117,41 @@ def get_filenames(subjects, data_dir, data_keys=None):
     data_files = {k: [] for k in data_keys}
     calibr_files = {k: [] for k in data_keys}
 
-    # Add all files per subject
+    # Find all files listed per subject
     for subj in subjects:
-        base_path = os.path.join(data_dir,subj)
-        listdir = sorted([os.path.join(base_path,fn) for fn in os.listdir(base_path) if 'tsv' in fn])
+        subj_dir = os.path.join(data_dir,subj)
+        filenames = os.listdir(subj_dir)
+
+        # For each data key, see which trial numbers (i.e. fn[:5]) are found 
         for key in data_keys:
-            data_files[key] += [fn for fn in listdir if (key in fn) and (not 'calibration' in fn)]
-            calibr_files[key] += [fn for fn in listdir if (key in fn) and ('calibration' in fn)]
-    calibr_files = {k: v for k, v in calibr_files.items() if v} # remove empty keys
+            calib_trials = {fn[:5] for fn in filenames if ('calibration' in fn) and ('tsv' in fn) and (key in fn)}
+            data_trials = {fn[:5] for fn in filenames if (not 'calibration' in fn) and ('tsv' in fn) and (key in fn)}
+
+            # Loop over the trial numbers
+            for trial in data_trials:
+                results = sorted(glob.glob(f'{subj_dir}/{trial}*{key}.tsv'))
+                results = [r for r in results if not 'calibration' in r]
+
+                # Keep or remove duplicates 
+                if keep_duplicates:
+                    for r in results:
+                        data_files[key].append(r)
+                else:
+                    data_files[key].append(results[-1])
+
+            # Repeat for the calibration trials
+            for trial in calib_trials:
+                results = sorted(glob.glob(f'{subj_dir}/{trial}*_calibrationTest_*{key}.tsv'))
+                if keep_duplicates:
+                    for r in results:
+                        calibr_files[key].append(r)
+                else:
+                    calibr_files[key].append(results[-1])
+
+    # Sort the results
+    for key in data_keys:
+        calibr_files[key] = sorted(calibr_files[key])
+        data_files[key] = sorted(data_files[key])
     return data_files, calibr_files
 
 def load_data_from_filenames(filenames_dict, downsample=None, **pd_kwargs):

@@ -28,8 +28,8 @@ ORDERED_CONDITIONS = ['GazeIgnored', 'GazeAssistedSampling', 'SimulationFixedToG
 COND_AS_SCALAR = {k:i for i,k in enumerate(ORDERED_CONDITIONS)} # {..: 0, ..: 1, ..: 2}
 COND_AS_COLOR_LABEL = {k:f'C{i}' for i,k in enumerate(ORDERED_CONDITIONS)} # {..: 'C0', ..: 'C1', ..: 'C2'}
 COND_REDEFINED = {'GazeIgnored': 'Gaze Ignored',
-                  'SimulationFixedToGaze': 'Gaze Locked', 
-                  'GazeAssistedSampling' : 'Gaze Contingent'} # Replace with names that are consistent with the paper
+                  'GazeAssistedSampling' : 'Gaze Contingent',
+                  'SimulationFixedToGaze': 'Gaze Locked'} # Replace with names that are consistent with the paper
 
 TITLE_REDEFINED = {} # TODO
 

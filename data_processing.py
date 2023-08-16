@@ -23,10 +23,11 @@ SUBJECTS = {'S35', 'S37', 'S38', 'S39', 'S40', # which subjects to include in th
             'S41', 'S42', 'S45', 'S46', 'S47',
             'S49', 'S50', 'S51', 'S52', 'S53',
             'S54', 'S55', 'S56', 'S57'}        # Pilot subjects:"'S30', 'S30_','S31' 's33', 's33_', 'S34', 'S34_'"
-LOAD_PREPROCESSED = True
-DATA_KEYS = ['TrialConfigRecord', 'EngineDataRecord', 'SingleEyeDataRecordC'] # which kind of data to load
-DOWNSAMPLE = 1 # for faster anaylis, the data can be downsampled with a factor
+PRACTICE_TRIALS = 'B0|B1T0|B2T0|B3T0|B4T0|B5T0|B6T0'
 
+
+DATA_KEYS = ['TrialConfigRecord', 'EngineDataRecord', 'SingleEyeDataRecordC'] # which kind of data to load
+DOWNSAMPLE = 1 # for faster anaylis, the data can be downsampled with a factor > 1
 
 
 def expand_coordinates(df):
@@ -72,6 +73,11 @@ def preprocess_data(exp_data, trial_configs=None):
             add_conditions_from_trial_data(dataframe,
                                          trial_configs,
                                          ['ExperimentalTask', 'Block', 'GazeCondition', 'Subject', 'TrialDuration'])
+            
+        # If time series data, add the elapsed trial time (in seconds) as column
+        if 'TimeStamp' in data.columns:
+            start_trial = data.ne(data.shift()).TrialIdentifier # True for first frame of each trial
+            data['SecondsSinceTrialStart'] =  (data.TimeStamp - data.where(start_trial).TimeStamp.ffill()) * 1e-7
 
         # Convert Quaternions to normalized direction vector (in separate column)
         rot_cols = [col for col in dataframe.columns if 'Rot' in col]
@@ -89,12 +95,14 @@ def save_preprocessed_data(exp_data, calibr_data, data_dir):
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
     for data_key, dataframe in exp_data.items():
-        fn = os.path.join(save_dir,f'{data_key}.tsv')
-        dataframe.to_csv(fn, sep = '\t', index=False)
+        if dataframe is not None:
+            fn = os.path.join(save_dir,f'{data_key}.tsv')
+            dataframe.to_csv(fn, sep = '\t', index=False)
 
     for data_key, dataframe in calibr_data.items():
-        fn = os.path.join(save_dir,f'calibrationTest_{data_key}.tsv')
-        dataframe.set_index('TrialIdentifier').to_csv(fn, sep = '\t', index=False)
+        if dataframe is not None:
+            fn = os.path.join(save_dir,f'calibrationTest_{data_key}.tsv')
+            dataframe.to_csv(fn, sep = '\t', index=False)
 
 def load_preprocessed_data(path):
     exp_data, calibr_data = dict(), dict()
@@ -205,3 +213,38 @@ def get_survey_responses(fn = os.path.join(DATA_DIR,'_ExitSurvey.tsv'), sep='\t'
     responses = data[2:].set_index('Q1').loc[subjects].copy()
     responses.index.name = 'Subject'
     return responses, question_mapping
+
+
+def drop_invalid(data, exclude_trials=PRACTICE_TRIALS, include_subjects=SUBJECTS, include_tasks=None,
+                 exlude_blocks=None, clip_valid_frames=True, check_sensor_validity=False):
+    """Drop invalid rows from (pre-processed) dataframes.
+    exclude_trials (str): regex string that specifies which trial IDs are excluded
+    include_subjects (list): list of subject IDs (str) that are to be included. All other subjects are dropped.
+    exlude_blocks (list): list of block numbers to drop from dataframe
+    clip_valid_frames (bool): if set True, all frames that were recorded after the trial ended are dropped.
+    check_sensor_validity: if set True, all frames that are marked as invalid (in eye tracker data) are dropped.   
+    """
+    # Pick blocks and subjects of interest
+    if exclude_trials is not None:
+        data = data.loc[~data.TrialIdentifier.str.contains(exclude_trials)]
+    if include_subjects is not None:
+        data = data.loc[data.Subject.isin(include_subjects)]
+    if exlude_blocks is not None:
+        data = data.loc[~data.Block.isin(exlude_blocks)]
+    if include_tasks is not None:
+        data = data.loc[data.ExperimentalTask.isin(include_tasks)]
+
+    # Remove data that was stil recorded after end of trial
+    time_series = 'TimeStamp' in data.columns # check if timeseries data
+    if clip_valid_frames and time_series:
+        start_trial = data.ne(data.shift()).TrialIdentifier # True for first frame of each trial
+        data['SecondsSinceTrialStart'] =  (data.TimeStamp - data.where(start_trial).TimeStamp.ffill()) * 1e-7
+        after_finish = data.index[(data.SecondsSinceTrialStart > data.TrialDuration)]
+        data.drop(after_finish, inplace=True)
+    
+    # Remove data that was registered as invalid (eye-tracking sensor)
+    if check_sensor_validity:
+        sensor_validity = (data.Validity > 0 ).groupby(data.TrialIdentifier).mean()
+        data.drop(data.index[data.Validity == 0 ], inplace=True)
+        data['TrialSensorValidity'] = sensor_validity.loc[data.TrialIdentifier].values
+    return data

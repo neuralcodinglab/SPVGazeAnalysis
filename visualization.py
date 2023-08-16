@@ -81,12 +81,36 @@ def bar_plots(data, endpoints, x='GazeCondition',
         axs[i].set(title=y)
     return fig, axs
 
+def regression_plots(data, endpoints, x='Block', hue='GazeCondition',
+                     hue_order=ORDERED_CONDITIONS, axs=None, fig=None, **kwargs):
+    
+    # Create axes
+    if axs is None:
+        fig, axs = create_subplots(len(endpoints))
+        
+    # Plot figures
+    if len(endpoints) == 1:
+        y = endpoints[0]
+        sns.lmplot(data=data, x=x, y=y, hue=hue, hue_order=hue_order, ax=axs, **kwargs)
+        axs.set(title=y)
+        return fig, axs
+        
+    for i, y in enumerate(endpoints):
+        for h in hue_order:
+            subset = data.loc[data[hue]==h]
+            sns.regplot(data=subset, x=x, y=y, ax=axs[i], **kwargs)
+        axs[i].set(title=y)
+    return fig, axs
+    
 
 def swarm_plots(data, endpoints, group = 'Subject',
                 axs=None, fig=None,
                 x = 'GazeCondition',
                 scalar_mapping = COND_AS_SCALAR,
-                color_mapping = COND_AS_COLOR_LABEL,
+                linecolor = 'gray',
+                markercolor = 'k',
+#                 color_mapping = COND_AS_COLOR_LABEL,
+                
                 jitter=0.2, alpha=0.3):
     
     # Replace categorical data x with scalar data x_
@@ -110,12 +134,67 @@ def swarm_plots(data, endpoints, group = 'Subject',
         # Draw a line with markers for each instance in a group (e.g. for each subject)
         for category in data[group].unique():
             mask = sorted_data[group] == category
-            colors = sorted_data.loc[mask,x].replace(color_mapping)
-            axs[i].plot(x_.loc[mask], sorted_data.loc[mask,y], linestyle='-', color='gray', alpha=alpha )
-            axs[i].scatter(x_.loc[mask], sorted_data.loc[mask,y], linestyle='-',color='k', linewidth=0, alpha=alpha)
+#             colors = sorted_data.loc[mask,x].replace(color_mapping)
+#             axs[i].plot(x_.loc[mask], sorted_data.loc[mask,y], linestyle='-', color='gray', alpha=alpha )
+#             axs[i].scatter(x_.loc[mask], sorted_data.loc[mask,y], linestyle='-',color='k', linewidth=0, alpha=alpha)
+            axs[i].plot(x_.loc[mask], sorted_data.loc[mask,y], linestyle='-', color=linecolor, alpha=alpha )
+            axs[i].scatter(x_.loc[mask], sorted_data.loc[mask,y], linestyle='-',color=markercolor, linewidth=0, alpha=alpha)
+
         
     return fig, axs
 
+def plot_single_gaze_trajectory(data, as_line=True, tmax=None, fig=None, ax=None, title=None, colorbar=False):
+    if ax is None:
+        fig, ax = plt.subplots(1,1,figsize=(4,4), dpi=100)
+    
+    
+    # Get valid x and y coordinates
+    valid = data.Validity != 0
+    x = np.arctan(data.loc[valid, 'GazeDirectionNormInEyeX'] / data.loc[valid, 'GazeDirectionNormInEyeZ']) *180/np.pi
+    y = np.arctan(data.loc[valid, 'GazeDirectionNormInEyeY'] / data.loc[valid, 'GazeDirectionNormInEyeZ']) *180/np.pi
+    
+    # Color
+    t = data.loc[valid].SecondsSinceTrialStart
+    if tmax is None:
+        tmax = t.max()
+    norm = plt.Normalize(t.min(), tmax)
+    
+    # Plot colored line or scatter
+    if as_line:
+        points = np.array([x, y]).T.reshape(-1, 1, 2)
+        segments = np.concatenate([points[:-1], points[1:]], axis=1)
+        lc = matplotlib.collections.LineCollection(segments, cmap='viridis', norm=norm)
+        lc.set_array(t)
+        lc.set_linewidth(1)
+        handle = ax.add_collection(lc)
+    else:
+        handle = ax.scatter(x, y, alpha = 0.05, c=t, norm=norm, cmap='viridis') #color='#9e1111')
+    
+    if colorbar:
+        fig.colorbar(handle,ax=ax)
+    ax.axis('square')
+    ax.set(xlim = [-50,50],
+           ylim = [-50,50], title=title)
+    return fig, ax
+
+
+def plot_gaze_trajectories(data, trials_of_interest, tmax=90, as_line=False):
+    ny, nx = trials_of_interest.shape
+    fig, axs = plt.subplots(ny,nx,figsize=(4*nx,4*ny))
+
+    for i,t in enumerate(trials_of_interest.flatten()):
+        if i >= len(axs.flatten()): 
+            break
+        trial_data = data.loc[data.TrialIdentifier == t]
+        duration = trial_data.TrialDuration.iloc[0]
+        trial_data = trial_data.loc[trial_data.SecondsSinceTrialStart < trial_data.TrialDuration]
+        condition = trial_data.GazeCondition.iloc[0]
+        lbl = COND_REDEFINED[condition]
+        plot_single_gaze_trajectory(trial_data, as_line=as_line, tmax=tmax,
+                             title=f'Trial {t} ({duration:.1f}s) \n{lbl}', fig=fig, ax=axs.flatten()[i])
+        axs.flatten()[i].set(xlabel='Azimuth (Deg)', ylabel='Elevation (Deg)')
+    plt.tight_layout()
+    return fig, axs
 
 def joint_distribution_plots(data, pairs, order=ORDERED_CONDITIONS, regression=False, despine_completely=True, reverse_order=True):
     
@@ -193,7 +272,7 @@ def redefine_x_ticks(axs, mapping=COND_REDEFINED, remove_xlabel=False):
         axs.set(xlabel='')
 
 
-def add_significance_line(ax, x1, x2, y=None, text='', rel_h=0.02, rel_y=0.9, size=20):
+def add_significance_line(ax, x1, x2, y=None, text='', rel_h=0.015, rel_y=0.9, size=20):
     
     # Compute line height and height of vertical 'line ends'
     y_min, y_max = ax.get_ylim()
@@ -206,7 +285,7 @@ def add_significance_line(ax, x1, x2, y=None, text='', rel_h=0.02, rel_y=0.9, si
     ax.plot(x_, y_,'k')
     
     # Asteriks above line
-    ax.text((x2+x1)/2, y+(h*2), text,
+    ax.text((x2+x1)/2, y+(h), text,
         horizontalalignment='center',
         verticalalignment='center',
         size=size,)
@@ -222,7 +301,8 @@ def add_significance_lines(ax, text,
     """ Add multiple significance lines to ax. """
     increase_ylim(ax, rel_y=1.25)
     for j, (x1, x2) in enumerate(x_pairs) :
-        add_significance_line(ax, x1, x2, text=text[j], rel_y=rel_y[j], **kwargs)
+        if text[j]:
+            add_significance_line(ax, x1, x2, text=text[j], rel_y=rel_y[j], **kwargs)
         
         
 def add_panel_index(ax, text, rel_x=-0.05, rel_y=1.05, size=PANEL_INDEX_SIZE):

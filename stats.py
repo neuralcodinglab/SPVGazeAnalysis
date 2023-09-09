@@ -83,9 +83,9 @@ def paired_test(data, group, endpoints, relabel_conditions=True, test='Wilcoxon'
     for several <endpoints>, where data is paired over <group> (e.g. subject)."""   
     
     if test == 'Wilcoxon':
-        stats_func = lambda x1,x2: scipy.stats.wilcoxon(x1,x2, zero_method='pratt')
+        stats_func = lambda x1,x2: scipy.stats.wilcoxon(x1,x2, zero_method='pratt', nan_policy='omit')
     elif test == 't-test':
-        stats_func = scipy.stats.ttest_rel
+        stats_func = lambda x1,x2: scipy.stats.ttest_rel(x1,x2, nan_policy='omit')
     else:
         raise NotImplementedError
     

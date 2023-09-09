@@ -8,9 +8,22 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
 import numpy as np
+import matplotlib
+from matplotlib.patches import Patch
 
 # local modules
 import utils
+import env_params
+from env_params import HALLWAY_DIMS as hw_dims
+from env_params import Boxes
+from env_params import START_POS_X as hw_x_offset
+from env_params import get_hallway_layouts, Boxes
+
+from matplotlib.collections import PatchCollection
+import matplotlib.colors as mcolors
+from matplotlib.patches import Rectangle
+import matplotlib.patheffects as PathEffects
+
 
 
 
@@ -20,18 +33,17 @@ import utils
 BASE_PATH = os.path.dirname(__file__)
 FIGURESTYLE = f'{BASE_PATH}/_figurestyle/seaborn-v0_8.mplstyle'
 COLORS = utils.load_yaml(f'{BASE_PATH}/_figurestyle/colors.yaml')
+COLORMAP = mcolors.ListedColormap(COLORS.values())
 
 # Default order for using consistent colors for conditions
-ORDERED_CONDITIONS = ['GazeIgnored', 'GazeAssistedSampling', 'SimulationFixedToGaze'] 
+ORDERED_CONDITIONS = ['SimulationFixedToGaze', 'GazeAssistedSampling', 'GazeIgnored',] 
 
 # Mapping to different label or scalar
 COND_AS_SCALAR = {k:i for i,k in enumerate(ORDERED_CONDITIONS)} # {..: 0, ..: 1, ..: 2}
 COND_AS_COLOR_LABEL = {k:f'C{i}' for i,k in enumerate(ORDERED_CONDITIONS)} # {..: 'C0', ..: 'C1', ..: 'C2'}
-COND_REDEFINED = {'GazeIgnored': 'Gaze Ignored',
+COND_REDEFINED = {'SimulationFixedToGaze': 'Gaze Locked',
                   'GazeAssistedSampling' : 'Gaze Contingent',
-                  'SimulationFixedToGaze': 'Gaze Locked'} # Replace with names that are consistent with the paper
-
-TITLE_REDEFINED = {} # TODO
+                  'GazeIgnored': 'Gaze Ignored', } # For replacing names, consistent with the paper
 
 PANEL_INDEX_SIZE = 20
 
@@ -46,6 +58,14 @@ def set_figurestyle(figurestyle=FIGURESTYLE, colors=COLORS):
 
 def create_subplots(n_figs=3, figsize=FIGSIZE):
     return plt.subplots(1,n_figs,figsize=(figsize[0]*n_figs,figsize[1]), dpi=100)
+
+def plot_legend(figsize=FIGSIZE, size=50):
+    handles = [Patch(facecolor=c, edgecolor=c) for c in COLORS.values()]
+    labels = COND_REDEFINED.values()
+    fig, ax = plt.subplots(figsize=figsize)
+    ax.axis(False)
+    ax.legend(handles, labels, loc="center", bbox_to_anchor=(0.5, 0.5), prop={"size":size})
+    return fig,ax
 
 def violin_plots(data, endpoints, x='GazeCondition',
                  axs=None, fig=None,
@@ -87,19 +107,22 @@ def regression_plots(data, endpoints, x='Block', hue='GazeCondition',
     # Create axes
     if axs is None:
         fig, axs = create_subplots(len(endpoints))
-        
-    # Plot figures
-    if len(endpoints) == 1:
-        y = endpoints[0]
-        sns.lmplot(data=data, x=x, y=y, hue=hue, hue_order=hue_order, ax=axs, **kwargs)
-        axs.set(title=y)
+    
+    # recursive loop through all axes
+    if type(axs) == np.ndarray:
+        for i, ax in enumerate(axs):
+            regression_plots(data, endpoints[i], x, hue, hue_order, axs=ax, fig=fig, **kwargs)
+            ax.set(title=endpoints[i])
         return fig, axs
-        
-    for i, y in enumerate(endpoints):
-        for h in hue_order:
-            subset = data.loc[data[hue]==h]
-            sns.regplot(data=subset, x=x, y=y, ax=axs[i], **kwargs)
-        axs[i].set(title=y)
+
+    if (type(endpoints) is list) and (len(endpoints)==1):
+        y=endpoints[0]
+    else:
+        y=endpoints
+  
+    for h in hue_order:
+        subset = data.loc[data[hue]==h]
+        sns.regplot(data=subset, x=x, y=y, ax=axs, **kwargs)
     return fig, axs
     
 
@@ -134,9 +157,6 @@ def swarm_plots(data, endpoints, group = 'Subject',
         # Draw a line with markers for each instance in a group (e.g. for each subject)
         for category in data[group].unique():
             mask = sorted_data[group] == category
-#             colors = sorted_data.loc[mask,x].replace(color_mapping)
-#             axs[i].plot(x_.loc[mask], sorted_data.loc[mask,y], linestyle='-', color='gray', alpha=alpha )
-#             axs[i].scatter(x_.loc[mask], sorted_data.loc[mask,y], linestyle='-',color='k', linewidth=0, alpha=alpha)
             axs[i].plot(x_.loc[mask], sorted_data.loc[mask,y], linestyle='-', color=linecolor, alpha=alpha )
             axs[i].scatter(x_.loc[mask], sorted_data.loc[mask,y], linestyle='-',color=markercolor, linewidth=0, alpha=alpha)
 
@@ -178,9 +198,10 @@ def plot_single_gaze_trajectory(data, as_line=True, tmax=None, fig=None, ax=None
     return fig, ax
 
 
-def plot_gaze_trajectories(data, trials_of_interest, tmax=90, as_line=False):
+def plot_gaze_trajectories(data, trials_of_interest, tmax=90, as_line=False, figsize=FIGSIZE):
     ny, nx = trials_of_interest.shape
-    fig, axs = plt.subplots(ny,nx,figsize=(4*nx,4*ny))
+#     fig, axs = plt.subplots(ny,nx,figsize=(4*nx,4*ny))
+    fig,axs = plt.subplots(ny,nx,figsize=(figsize[0]*nx,figsize[1]*ny))
 
     for i,t in enumerate(trials_of_interest.flatten()):
         if i >= len(axs.flatten()): 
@@ -195,6 +216,156 @@ def plot_gaze_trajectories(data, trials_of_interest, tmax=90, as_line=False):
         axs.flatten()[i].set(xlabel='Azimuth (Deg)', ylabel='Elevation (Deg)')
     plt.tight_layout()
     return fig, axs
+
+
+
+
+def plot_hallway(hallway, ax):
+
+    # Get hallway layouts
+    hallways = env_params.get_hallway_layouts()
+    segmentLength = hw_dims['segmentLength']
+    hwWidth = hw_dims['hwWidth']
+    hwLength = len(hallways)*segmentLength
+    hw_names = ['Hallway1', 'Hallway2', 'Hallway3']
+    
+    # Get box sizes
+    smBox = hw_dims['smBox']
+    lgBox = hw_dims['lgBox']
+   
+#     ax.set_axis_off()
+    ax.set(xticks=np.linspace(0,hwLength,45), yticks=[hwWidth/2], 
+          xticklabels=[], yticklabels=[])
+    ax.tick_params(width=0)
+    
+    ax.set_xlim((0, hwLength))
+    ax.set_ylim((0, hwWidth))
+    # background
+#     rect = Rectangle((0, 0), hwLength, hwWidth, edgecolor='none', facecolor='xkcd:ivory', zorder=0)
+    rect = Rectangle((0,0),hwLength, hwWidth, facecolor='none', edgecolor='k', linewidth=5, zorder=10)
+    # Add the patch to the Axes
+    ax.add_patch(rect)
+    
+    boxPatches = []
+    roomEnd=segmentLength
+    for box in hallway:
+        anchor = None
+        if box.value == Boxes.SmallL.value:
+            dY,dX,_ = smBox
+            anchor = (roomEnd - dX, hwWidth-dY)
+        elif box.value == Boxes.SmallC.value:
+            dY,dX,_ = smBox
+            anchor = (roomEnd - dX, (hwWidth-dY) / 2)
+        elif box.value == Boxes.SmallR.value:
+            dY,dX,_ = smBox
+            anchor = (roomEnd - dX, 0)
+        elif box.value == Boxes.LargLC.value:
+            dY,dX,_ = lgBox
+            dY *= 2 # *2 because it's 2 boxes next to each other
+            anchor = (roomEnd - dX, hwWidth-dY) 
+        elif box.value == Boxes.LargCR.value:
+            dY,dX,_ = lgBox
+            dY *= 2 # *2 because it's 2 boxes next to each other
+            anchor = (roomEnd - dX, 0)
+        elif box.value == Boxes.LargLR.value:
+            dY,dX,_ = lgBox
+            anchor = (roomEnd - dX, hwWidth - dY)
+            boxPatches.append(box_patch(anchor, dX, dY))
+            anchor = (roomEnd - dX, 0)
+            boxPatches.append(box_patch(anchor, dX, dY))
+            roomEnd += segmentLength
+            continue
+            
+        if anchor is not None:
+            boxPatches.append(box_patch(anchor, dX, dY))
+        roomEnd += segmentLength
+    
+#     pc = PatchCollection(boxPatches, edgecolor='none',
+#                  facecolor='xkcd:chocolate', zorder=10)
+    pc = PatchCollection(boxPatches, edgecolor='k',
+             facecolor=(0.6,0.6,0.6), zorder=5)
+    ax.add_collection(pc)
+    
+#     roomEnd = segmentLength
+#     dividers = []
+#     while roomEnd < hwLength:
+#         dividers.append(Rectangle((roomEnd, 0), .1*segmentLength, hwWidth))
+#         roomEnd += segmentLength
+#     pc = PatchCollection(dividers, edgecolor='none', 
+#                          facecolor= 'xkcd:grey', alpha=.6, zorder=5)
+    ax.axvline(5, color='k')
+    ax.axvline(42, color='k')
+    ax.add_collection(pc)
+                        
+def box_patch(anchor, dX, dY):
+    return Rectangle(anchor, dX, dY)
+
+def plot_mobility_trajectories(data, trials, fig=None, axs=None, hue=None, cmap=None, hue_order=None):
+    hallways = env_params.get_hallway_layouts()
+    
+    # Make subplot
+    if axs is None:
+        hwLength = hw_dims['segmentLength'] * len(hallways)
+        hwWidth = hw_dims['hwWidth']
+        fig, axs = plt.subplots(3,1, figsize=(hwLength/2,3.1 * hwWidth/2), dpi=300)
+
+    if cmap is None:
+        cmap = plt.colormaps['viridis']
+        
+    # Lookup which path in which plot 
+    plot_idx = dict()
+    for idx, hw_name in enumerate(hallways):
+        plot_hallway(hallways[hw_name],axs[idx])
+        plot_idx[hw_name] = idx
+
+    for trial in trials:
+        d = data.loc[data.TrialIdentifier == trial]
+        d_ = d.loc[d.InsideTrial]
+        
+        # Which ax (which hallway)?
+        hw_name = d.Hallway.iloc[0]
+        idx = plot_idx[hw_name]
+        ax = axs[idx]
+        
+        # Label
+        subject = d.Subject.iloc[0]
+        condition = d.GazeCondition.iloc[0] 
+        condition = COND_REDEFINED[condition] # Rename for consistency with paper 
+        label = f'{condition} ({subject}) '
+
+        if hue is None:
+            h = ax.plot(d.x,d.y, '--', alpha=0.5, linewidth=1) # Plot entire recording
+            ax.plot(d_.x,d_.y, label=label, color=h[0].get_color()) # Plot trial data
+
+        else: 
+            if pd.api.types.is_numeric_dtype(d[hue]):
+                v = data[hue].replace([np.inf, -np.inf], np.nan).dropna()
+                c = (d_[hue]-v.min())/(v.max()-v.min())
+                color = cmap(c)
+                ax.scatter(d_.x,d_.y, label=label, color=color) # Plot entire recording
+            else:
+                cat = data[hue].unique()
+                if hue_order is None:
+                    hue_order = cat
+                N = len(cat) 
+                c = pd.DataFrame(cmap(np.linspace(0,1,N)), index=hue_order, columns=[*'rgba'])
+                color = c.loc[d[hue]].iloc[0].values
+                h = ax.plot(d.x,d.y, '--', alpha=0.5, linewidth=1, color=color) # Plot entire recording
+                ax.plot(d_.x,d_.y, label=label, color=color) # Plot trial data
+
+
+
+            
+        # Plot start, finish and colisions
+        if d_.empty:
+            continue
+        ax.scatter(d_.iloc[0].x,d_.iloc[0].y, marker='.', color ='k')
+        collision_mask = d.Collision # or d.FrontalCollision
+        cols = d.loc[collision_mask].groupby(['ClosestBoxZone'])[['x', 'y']].first()
+        ax.scatter(cols.x,cols.y, marker='o', s=250, facecolor=(0,0,0,0), edgecolor=(1,0,0), linewidth=2)
+    
+    for ax in axs:
+        ax.legend(loc='upper left')
 
 def joint_distribution_plots(data, pairs, order=ORDERED_CONDITIONS, regression=False, despine_completely=True, reverse_order=True):
     
@@ -221,7 +392,6 @@ def joint_distribution_plots(data, pairs, order=ORDERED_CONDITIONS, regression=F
         # The scatterplot
         ax0 = fig.add_subplot(gs[1, 0 + 3*i])
         ax0.spines[['right', 'top']].set_visible(False)
-#         sns.scatterplot(data=data, x=x, y=y, hue='GazeCondition',ax=ax0, legend=False, alpha=0.3)
     
         if regression:
             for condition in order: # ['GazeIgnored', 'GazeAssistedSampling', 'SimulationFixedToGaze']
@@ -270,6 +440,18 @@ def redefine_x_ticks(axs, mapping=COND_REDEFINED, remove_xlabel=False):
     axs.set_xticklabels(new_ticks)
     if remove_xlabel:
         axs.set(xlabel='')
+
+def redefine_legend_labels(axs, mapping=COND_REDEFINED):
+    
+    # recursive loop through all axes
+    if type(axs) == np.ndarray:
+        for ax in axs:
+            redefine_legend_labels(ax, mapping)
+        return
+    
+    handles, labels = axs.get_legend_handles_labels()
+    new_labels = [mapping[lbl] for lbl in labels]
+    axs.legend(handles=handles, labels=new_labels)
 
 
 def add_significance_line(ax, x1, x2, y=None, text='', rel_h=0.015, rel_y=0.9, size=20):

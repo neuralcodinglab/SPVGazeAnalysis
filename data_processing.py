@@ -13,26 +13,33 @@ import numpy as np
 import ast
 import scipy
 from scipy.spatial.transform import Rotation
+from tqdm import tqdm
 
 
 
 ## Defaults
 BASE_PATH = os.path.dirname(__file__)
 DATA_DIR = f'{BASE_PATH}/../_Datasets/SPVGazeData'          # The data directory
+
+SUBJECTS_EXP1 = {f'S{i:02d}' for i in range(1,24)}
 SUBJECTS = {'S35', 'S37', 'S38', 'S39', 'S40', # which subjects to include in the analysis
             'S41', 'S42', 'S45', 'S46', 'S47',
             'S49', 'S50', 'S51', 'S52', 'S53',
             'S54', 'S55', 'S56', 'S57'}        # Pilot subjects:"'S30', 'S30_','S31' 's33', 's33_', 'S34', 'S34_'"
+
+PRACTICE_TRIALS_EXP1 = ''
 PRACTICE_TRIALS = 'B0|B1T0|B2T0|B3T0|B4T0|B5T0|B6T0'
 
-
 DATA_KEYS = ['TrialConfigRecord', 'EngineDataRecord', 'SingleEyeDataRecordC'] # which kind of data to load
-DOWNSAMPLE = 1 # for faster anaylis, the data can be downsampled with a factor > 1
+DOWNSAMPLE = 1 # for faster anaylis, the data can be downsampled with a factor > 1 (integer)
+COPY_FROM_TRIAL_CFG = ['ExperimentalTask', 'Block', 'GazeCondition', 'Subject', 'TrialDuration', 'Hallway']
 
-
-def expand_coordinates(df):
+def expand_coordinates(df, columns=None):
     """Reads coordinates (stored as tuples in the CSV) into separate columns"""
-    for col in df.columns:
+    if columns is None:
+        columns = df.columns
+    columns = [col for col in columns if col in df.columns]
+    for col in columns:
         if str(df[col][0]).startswith('('): # check if tuple
             if type(df[col][0]) == str: # check if tuple is stored as string
                 df[col] = df[col].apply(ast.literal_eval) # convert string -> tuple
@@ -45,8 +52,9 @@ def expand_coordinates(df):
 def add_conditions_from_trial_data(df, trial_data, conditions):
     """Lookup the trial conditions in trial_data and add to df"""
     for condition in conditions:
-        lookup = trial_data.set_index('TrialIdentifier')[condition].to_dict() # map ID -> condition
-        df[condition] = df.TrialIdentifier.replace(lookup) # add condition to df
+        if condition in trial_data.columns:
+            lookup = trial_data.set_index('TrialIdentifier')[condition].to_dict() # map ID -> condition
+            df[condition] = df.TrialIdentifier.replace(lookup) # add condition to df
 
 def quat_to_euler(x):
     if type(x) == str:
@@ -61,34 +69,46 @@ def quat_to_dir(x):
     quat_obj = Rotation.from_quat(quat_tuple)
     return tuple(quat_obj.apply([0,0,1]))
 
-def preprocess_data(exp_data, trial_configs=None):
+def preprocess_data(exp_data, trial_configs=None,
+                    add_trial_cfg_cols=COPY_FROM_TRIAL_CFG,
+                    expand_columns = None,
+                    convert_quaternions=True,
+                   ):
+    """(Performs in-place adjustments to dataframes in exp_data!) 
+    - Copy some columns from the TrialConfigRecord dataframe (e.g. condition, block and other indep. vars)
+    - Convert Quaternions to normalized direction vector stored in separate columns
+    - Calculate SecondsSinceTrialStart in time-series dataframes
+    """
     if trial_configs is None:
         trial_configs = exp_data['TrialConfigRecord']
 
-    for data_key in exp_data.keys():
+    for data_key in tqdm(exp_data.keys()):
+        if exp_data[data_key] is None:
+            continue
         dataframe = exp_data[data_key]
 
         # Copy some useful columns from the TrialConfigRecord dataframe to the other dataframes
-        if data_key != 'TrialConfigRecord':
+        if data_key != 'TrialConfigRecord' and add_trial_cfg_cols:
             add_conditions_from_trial_data(dataframe,
-                                         trial_configs,
-                                         ['ExperimentalTask', 'Block', 'GazeCondition', 'Subject', 'TrialDuration'])
+                                           trial_configs,
+                                           add_trial_cfg_cols)
             
         # If time series data, add the elapsed trial time (in seconds) as column
-        if 'TimeStamp' in data.columns:
-            start_trial = data.ne(data.shift()).TrialIdentifier # True for first frame of each trial
-            data['SecondsSinceTrialStart'] =  (data.TimeStamp - data.where(start_trial).TimeStamp.ffill()) * 1e-7
+        if 'TimeStamp' in dataframe.columns:
+            try:
+                start_trial = dataframe.ne(dataframe.shift()).TrialIdentifier # True for first frame of each trial
+                dataframe['SecondsSinceTrialStart'] =  (dataframe.TimeStamp - dataframe.where(start_trial).TimeStamp.ffill()) * 1e-7
+            except Exception as err:
+                print(f"Failed processing of {data_key}\n{repr(err)}")
 
         # Convert Quaternions to normalized direction vector (in separate column)
         rot_cols = [col for col in dataframe.columns if 'Rot' in col]
-        if rot_cols:
+        if rot_cols and convert_quaternions:
             dir_cols = [col.replace('Rot', 'Dir') for col in rot_cols]
             dataframe[dir_cols] = dataframe.apply({col: quat_to_dir for col in rot_cols})
 
         # Put coordinates in separate columns (instead of tuples)
-        expand_coordinates(dataframe)
-
-    return
+        expand_coordinates(dataframe, columns=expand_columns)
 
 def save_preprocessed_data(exp_data, calibr_data, data_dir):
     save_dir = os.path.join(data_dir,'_preprocessed')
@@ -115,7 +135,7 @@ def load_preprocessed_data(path):
             exp_data[data_key] = pd.read_csv(os.path.join(path,fn),sep='\t')
     return exp_data, calibr_data
 
-def get_filenames(subjects, data_dir, data_keys=None, keep_duplicates=False):
+def get_filenames(subjects=SUBJECTS, data_dir=DATA_DIR, data_keys=None, keep_duplicates=False):
     """Returns dict with filenames for all specified subjects found in the data 
     directory. The filenames are indexed by record type. """
     # Initialize dict with filenames (categorized by record type)
@@ -176,8 +196,14 @@ def load_data_from_filenames(filenames_dict, downsample=None, **pd_kwargs):
         dataframe = None
         for i in range(len(filenames)):
 
+            
             # Read new rows from file
-            new = pd.read_csv(filenames[i],sep = '\t', **pd_kwargs)
+            try:
+                new = pd.read_csv(filenames[i],sep = '\t', **pd_kwargs)
+            except Exception as err:
+                print(f"error reading {filenames[i]}")
+                print(repr(err))
+                
             
             if data_key in ['EngineDataRecord', 'SingleEyeDataRecordR', 'SingleEyeDataRecordL', 'SingleEyeDataRecordC']:
                 new = new[::downsample_rate].copy()

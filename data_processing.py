@@ -32,7 +32,7 @@ PRACTICE_TRIALS = 'B0|B1T0|B2T0|B3T0|B4T0|B5T0|B6T0'
 
 DATA_KEYS = ['TrialConfigRecord', 'EngineDataRecord', 'SingleEyeDataRecordC'] # which kind of data to load
 DOWNSAMPLE = 1 # for faster anaylis, the data can be downsampled with a factor > 1 (integer)
-COPY_FROM_TRIAL_CFG = ['ExperimentalTask', 'Block', 'GazeCondition', 'Subject', 'TrialDuration', 'Hallway']
+COPY_FROM_TRIAL_CFG = ['RelativeTrialNumber', 'ExperimentalTask', 'Block', 'GazeCondition', 'Subject', 'TrialDuration', 'Hallway']
 
 def expand_coordinates(df, columns=None):
     """Reads coordinates (stored as tuples in the CSV) into separate columns"""

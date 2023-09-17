@@ -31,7 +31,7 @@ import matplotlib.patheffects as PathEffects
 
 # Figurestyle
 BASE_PATH = os.path.dirname(__file__)
-FIGURESTYLE = f'{BASE_PATH}/_figurestyle/seaborn-v0_8.mplstyle'
+FIGURESTYLE = f'{BASE_PATH}/_figurestyle/seaborn-like.mplstyle' # f'{BASE_PATH}/_figurestyle/seaborn-v0_8.mplstyle'
 COLORS = utils.load_yaml(f'{BASE_PATH}/_figurestyle/colors.yaml')
 COLORMAP = mcolors.ListedColormap(COLORS.values())
 
@@ -45,24 +45,32 @@ COND_REDEFINED = {'SimulationFixedToGaze': 'Gaze Locked',
                   'GazeAssistedSampling' : 'Gaze Contingent',
                   'GazeIgnored': 'Gaze Ignored', } # For replacing names, consistent with the paper
 
-PANEL_INDEX_SIZE = 20
+PANEL_INDEX_SIZE = 10 #20
 
-FIGSIZE = (4,4)
+FIGSIZE = (3.5,1.5)
 
 def set_figurestyle(figurestyle=FIGURESTYLE, colors=COLORS):
 #     sns.axes_style("darkgrid")
-    plt.style.use(figurestyle)
     sns.set_context("paper") # OVERRIDES EXISTING STYLE PARAMS
+    plt.style.use(figurestyle)
     sns.set_palette(sns.color_palette(colors.values())) #, n_colors=len(colors), desat=0.1))
 
 
-def create_subplots(n_figs=3, figsize=FIGSIZE):
-    return plt.subplots(1,n_figs,figsize=(figsize[0]*n_figs,figsize[1]), dpi=100)
 
-def plot_legend(figsize=FIGSIZE, size=50):
+def create_subplots(n_figs=3, figsize=FIGSIZE):
+    fig = plt.figure(figsize=figsize, dpi=300)
+    axs = []
+    gs = matplotlib.gridspec.GridSpec(1, n_figs, wspace=0.35, hspace=0)
+    for g in gs:
+        axs.append(fig.add_subplot(g))
+    axs = axs[0] if n_figs==1 else np.array(axs)
+    return fig, axs
+
+def plot_legend(figsize=FIGSIZE, size=50, fig=None, ax=None):
     handles = [Patch(facecolor=c, edgecolor=c) for c in COLORS.values()]
     labels = COND_REDEFINED.values()
-    fig, ax = plt.subplots(figsize=figsize)
+    if ax is None:
+        fig, ax = plt.subplots(figsize=figsize)
     ax.axis(False)
     ax.legend(handles, labels, loc="center", bbox_to_anchor=(0.5, 0.5), prop={"size":size})
     return fig,ax
@@ -131,7 +139,7 @@ def swarm_plots(data, endpoints, group = 'Subject',
                 x = 'GazeCondition',
                 scalar_mapping = COND_AS_SCALAR,
                 linecolor = 'gray',
-                markercolor = 'k',
+                markercolor = 'gray',
 #                 color_mapping = COND_AS_COLOR_LABEL,
                 
                 jitter=0.2, alpha=0.3):
@@ -198,10 +206,11 @@ def plot_single_gaze_trajectory(data, as_line=True, tmax=None, fig=None, ax=None
     return fig, ax
 
 
-def plot_gaze_trajectories(data, trials_of_interest, tmax=90, as_line=False, figsize=FIGSIZE):
+def plot_gaze_trajectories(data, trials_of_interest, tmax=90, as_line=False, fig=None, axs=None, figsize=FIGSIZE):
     ny, nx = trials_of_interest.shape
 #     fig, axs = plt.subplots(ny,nx,figsize=(4*nx,4*ny))
-    fig,axs = plt.subplots(ny,nx,figsize=(figsize[0]*nx,figsize[1]*ny))
+    if axs is None:
+        fig, axs = plt.subplots(ny,nx,figsize=(figsize[0]*nx,figsize[1]*ny))
 
     for i,t in enumerate(trials_of_interest.flatten()):
         if i >= len(axs.flatten()): 
@@ -240,6 +249,9 @@ def plot_hallway(hallway, ax):
     
     ax.set_xlim((0, hwLength))
     ax.set_ylim((0, hwWidth))
+
+
+    
     # background
 #     rect = Rectangle((0, 0), hwLength, hwWidth, edgecolor='none', facecolor='xkcd:ivory', zorder=0)
     rect = Rectangle((0,0),hwLength, hwWidth, facecolor='none', edgecolor='k', linewidth=5, zorder=10)
@@ -295,6 +307,8 @@ def plot_hallway(hallway, ax):
 #                          facecolor= 'xkcd:grey', alpha=.6, zorder=5)
     ax.axvline(5, color='k')
     ax.axvline(42, color='k')
+
+    
     ax.add_collection(pc)
                         
 def box_patch(anchor, dX, dY):
@@ -334,7 +348,7 @@ def plot_mobility_trajectories(data, trials, fig=None, axs=None, hue=None, cmap=
         label = f'{condition} ({subject}) '
 
         if hue is None:
-            h = ax.plot(d.x,d.y, '--', alpha=0.5, linewidth=1) # Plot entire recording
+            h = ax.plot(d.loc[~d.InsideTrial].x,d.loc[~d.InsideTrial].y, '--', alpha=0.5, linewidth=1.5) # Plot entire recording
             ax.plot(d_.x,d_.y, label=label, color=h[0].get_color()) # Plot trial data
 
         else: 
@@ -350,8 +364,11 @@ def plot_mobility_trajectories(data, trials, fig=None, axs=None, hue=None, cmap=
                 N = len(cat) 
                 c = pd.DataFrame(cmap(np.linspace(0,1,N)), index=hue_order, columns=[*'rgba'])
                 color = c.loc[d[hue]].iloc[0].values
-                h = ax.plot(d.x,d.y, '--', alpha=0.5, linewidth=1, color=color) # Plot entire recording
-                ax.plot(d_.x,d_.y, label=label, color=color) # Plot trial data
+                h = ax.plot(d.loc[d.FinishedTrial].x,d.loc[d.FinishedTrial].y, '--',
+                            alpha=0.5, linewidth=1.5, color=color,) # Plot entire recording
+                h = ax.plot(d.loc[~d.StartedTrial].x,d.loc[~d.StartedTrial].y, '--',
+                            alpha=0.5, linewidth=1.5, color=color,) # Plot entire recording
+                ax.plot(d_.x,d_.y, label=label, color=color, linewidth=2, alpha=0.6) # Plot trial data
 
 
 
@@ -362,10 +379,21 @@ def plot_mobility_trajectories(data, trials, fig=None, axs=None, hue=None, cmap=
         ax.scatter(d_.iloc[0].x,d_.iloc[0].y, marker='.', color ='k')
         collision_mask = d.Collision # or d.FrontalCollision
         cols = d.loc[collision_mask].groupby(['ClosestBoxZone'])[['x', 'y']].first()
-        ax.scatter(cols.x,cols.y, marker='o', s=250, facecolor=(0,0,0,0), edgecolor=(1,0,0), linewidth=2)
+        ax.scatter(cols.x,cols.y, marker='o', s=50, facecolor=(0,0,0,0), edgecolor=(1,0,0), linewidth=2)
     
-    for ax in axs:
-        ax.legend(loc='upper left')
+    for i, ax in enumerate(axs):
+        legend = ax.legend(loc='center right', bbox_to_anchor=(0, 0.5),
+                          title=f'       Obstacle Layout {i+1}',
+                          edgecolor = 'grey',
+                          # frameon=True,
+                          facecolor='white',
+                          # fontsize='medium',
+                          title_fontproperties = {'weight':'bold','size':'small'},
+                          alignment = 'left'
+                 
+                           
+                          )
+        # legend.get_frame().set_linewidth(1.0)
 
 def joint_distribution_plots(data, pairs, order=ORDERED_CONDITIONS, regression=False, despine_completely=True, reverse_order=True):
     
@@ -427,16 +455,22 @@ def joint_distribution_plots(data, pairs, order=ORDERED_CONDITIONS, regression=F
     return handles
 
 
-def redefine_x_ticks(axs, mapping=COND_REDEFINED, remove_xlabel=False):
+def redefine_x_ticks(axs, mapping=COND_REDEFINED,
+                     remove_xlabel=False,
+                     new_line=False,):
     
     # recursive loop through all axes
     if type(axs) == np.ndarray:
         for ax in axs:
-            redefine_x_ticks(ax, mapping, remove_xlabel)
+            redefine_x_ticks(ax, mapping, remove_xlabel, new_line)
         return
     
     old_ticks = axs.get_xticklabels()
     new_ticks = [mapping[t.get_text()] for t in old_ticks]
+
+    if new_line:
+        new_ticks = [t.replace(' ', '\n') for t in new_ticks]
+    
     axs.set_xticklabels(new_ticks)
     if remove_xlabel:
         axs.set(xlabel='')
@@ -454,7 +488,7 @@ def redefine_legend_labels(axs, mapping=COND_REDEFINED):
     axs.legend(handles=handles, labels=new_labels)
 
 
-def add_significance_line(ax, x1, x2, y=None, text='', rel_h=0.015, rel_y=0.9, size=20):
+def add_significance_line(ax, x1, x2, y=None, text='', rel_h=0.015, rel_y=0.9, size=13):
     
     # Compute line height and height of vertical 'line ends'
     y_min, y_max = ax.get_ylim()
@@ -467,7 +501,7 @@ def add_significance_line(ax, x1, x2, y=None, text='', rel_h=0.015, rel_y=0.9, s
     ax.plot(x_, y_,'k')
     
     # Asteriks above line
-    ax.text((x2+x1)/2, y+(h), text,
+    ax.text((x2+x1)/2, y-(h/2), text,
         horizontalalignment='center',
         verticalalignment='center',
         size=size,)
@@ -487,7 +521,7 @@ def add_significance_lines(ax, text,
             add_significance_line(ax, x1, x2, text=text[j], rel_y=rel_y[j], **kwargs)
         
         
-def add_panel_index(ax, text, rel_x=-0.05, rel_y=1.05, size=PANEL_INDEX_SIZE):
+def add_panel_index(ax, text, rel_x=-0.15, rel_y=1.07, size=PANEL_INDEX_SIZE):
     y_min, y_max = ax.get_ylim()
     x_min, x_max = ax.get_xlim()
     y = (y_max-y_min)*rel_y + y_min

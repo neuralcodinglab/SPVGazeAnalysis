@@ -233,7 +233,7 @@ def load_data_from_filenames(filenames_dict, downsample=None, **pd_kwargs):
 def get_target_locations(fn = os.path.join(DATA_DIR,'_TargetLocations.tsv'), sep='\t'):
     return pd.read_csv(fn, sep=sep).set_index('TargetName')
 
-def get_survey_responses(fn = os.path.join(DATA_DIR,'_ExitSurvey.tsv'), sep='\t', subjects=list(SUBJECTS)):
+def get_survey_responses(fn = os.path.join(DATA_DIR,'_Exp2ExitSurvey.tsv'), sep='\t', subjects=list(SUBJECTS)):
     data = pd.read_csv(fn, sep=sep, encoding='utf-16')
     question_mapping = data.head(1).T.to_dict()[0]
     responses = data[2:].set_index('Q1').loc[subjects].copy()

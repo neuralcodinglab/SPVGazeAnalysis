@@ -24,7 +24,7 @@ grid.linewidth: 1
 
 image.cmap: Greys
 
-legend.fontsize: 8
+legend.fontsize: 6
 legend.frameon: False
 legend.numpoints: 1
 legend.scatterpoints: 1

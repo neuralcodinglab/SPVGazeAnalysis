@@ -383,12 +383,12 @@ def plot_mobility_trajectories(data, trials, fig=None, axs=None, hue=None, cmap=
     
     for i, ax in enumerate(axs):
         legend = ax.legend(loc='center right', bbox_to_anchor=(0, 0.5),
-                          title=f'       Obstacle Layout {i+1}',
+                          title=f'Obstacle Layout {i+1}',
                           edgecolor = 'grey',
                           # frameon=True,
                           facecolor='white',
                           # fontsize='medium',
-                          title_fontproperties = {'weight':'bold','size':'small'},
+                          title_fontproperties = {'weight':'bold','size':7},
                           alignment = 'left'
                  
                            

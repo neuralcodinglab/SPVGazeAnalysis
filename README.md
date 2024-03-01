@@ -23,4 +23,6 @@ The analysis is based on the data of two separate VR experiments. Four types of 
 2. Timeseries data from the Unity game engine: EngineDataRecord, containing the head positions, raycast vectors (pointing directions, trigger events (button presses), etc.
 3. Trial configuration records saved after completion of each trial: TrialConfigRecord, containing the experimental conditions, the subject responses and the trial durations of each trial.
 4. Additional data surveys (exit surveys) with personal responses.
+
+
 Please refer to the paper and the notebook files for a full explanation on the data analyis.

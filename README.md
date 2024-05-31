@@ -1,6 +1,6 @@
 # Analysis scripts gaze-contingent VR phosphene simulation experiments.
 This repository contains the analysis scripts for the publication:
-De Ruyter Van Steveninck, J., Nipshagen, M., Van Gerven, M., Güçlü, U., Güçlüturk, Y., & Van Wezel, R. (2023). Gaze-contingent processing improves mobility performance and visual orientation in simulated head-steered prosthetic vision (Preprint). bioRxiv. https://doi.org/10.1101/2023.09.18.558225
+de Ruyter van Steveninck, J., Nipshagen, M., van Gerven, M., Güçlü, U., Güçlüturk, Y., & van Wezel, R. (2024). Gaze-contingent processing improves mobility, scene recognition and visual search in simulated head-steered prosthetic vision. Journal of neural engineering, 21(2), Article 026037. https://doi.org/10.1088/1741-2552/ad357d
 
 Note this repository contains the data analysis. The code for the VR-simulations can be found in a separate repository: https://github.com/neuralcodinglab/spvgaze
 

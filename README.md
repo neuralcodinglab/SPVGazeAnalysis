@@ -2,6 +2,7 @@
 This repository contains the analysis scripts for the publication:
 De Ruyter Van Steveninck, J., Nipshagen, M., Van Gerven, M., Güçlü, U., Güçlüturk, Y., & Van Wezel, R. (2023). Gaze-contingent processing improves mobility performance and visual orientation in simulated head-steered prosthetic vision (Preprint). bioRxiv. https://doi.org/10.1101/2023.09.18.558225
 
+Note this repository contains the data analysis. The code for the VR-simulations can be found in a separate repository: https://github.com/neuralcodinglab/spvgaze
 
 ## Usage 
 The following steps can be performed for reproducing the analysis:
